@@ -1,0 +1,19 @@
+{
+  "name": "bigquery-mcp-server",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "mkdir -p dist && bun build --compile --outfile=dist/$npm_package_name index.ts",
+    "show-package-name": "echo $npm_package_name"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.0"
+  }
+}
