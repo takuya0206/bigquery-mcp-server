@@ -80,9 +80,18 @@ To use this server with an MCP-enabled LLM, add it to your MCP configuration:
 ```json
 {
   "mcpServers": {
-    "bigquery": {
+    "BigQuery": {
       "command": "/path/to/dist/bigquery-mcp-server",
-      "args": ["--project-id=your-project-id"],
+      "args": [
+        "--project-id",
+        "your-project-id",
+        "--location",
+        "asia-northeast1",
+        "--max-results",
+        "1000",
+        "--max-bytes-billed",
+        "500000000000"
+      ],
       "env": {
         "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json"
       }
@@ -96,9 +105,18 @@ You can also use Application Default Credentials instead of a service account ke
 ```json
 {
   "mcpServers": {
-    "bigquery": {
+    "BigQuery": {
       "command": "/path/to/dist/bigquery-mcp-server",
-      "args": ["--project-id=your-project-id"]
+      "args": [
+        "--project-id",
+        "your-project-id",
+        "--location",
+        "asia-northeast1",
+        "--max-results",
+        "1000",
+        "--max-bytes-billed",
+        "500000000000"
+      ]
     }
   }
 }
@@ -127,18 +145,11 @@ To authenticate using Application Default Credentials:
 
 ## Testing
 
-A basic test script is included to verify that the server starts and responds to requests:
+You can use [inspector](https://github.com/modelcontextprotocol/inspector) for testing and debugging.
 
-```bash
-# Run the test script
-bun test
-
-# Or directly
-cd test
-./test-server.js
 ```
-
-Note: The test script doesn't actually connect to BigQuery. It's meant to verify that the server starts and responds to requests.
+npx @modelcontextprotocol/inspector dist/bigquery-mcp-server --project-id={{your_own_project}}
+```
 
 ## Usage
 
