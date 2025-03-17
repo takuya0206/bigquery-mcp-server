@@ -1,39 +1,255 @@
-# Template for Bun MCP Server
+# BigQuery MCP Server
 
-## Usage
+A Model Context Protocol (MCP) server for accessing Google BigQuery. This server enables Large Language Models (LLMs) to understand BigQuery dataset structures and execute SQL queries.
 
-Create a new project
+## Features
+
+### Authentication and Connection Management
+- Supports Application Default Credentials (ADC) or service account key files
+- Configurable project ID and location settings
+- Authentication verification on startup
+
+### Tools
+
+1. **query**
+   - Execute read-only (SELECT) BigQuery SQL queries
+   - Configurable maximum results and bytes billed
+   - Security checks to prevent non-SELECT queries
+
+2. **list_all_tables**
+   - List all datasets and tables in the project
+   - Returns a structured JSON object with dataset and table names
+
+3. **get_table_information**
+   - Get table schema and sample data (up to 20 rows)
+   - Support for partitioned tables with partition filters
+   - Warnings for queries on partitioned tables without filters
+
+4. **dry_run_query**
+   - Check query validity and estimate cost without execution
+   - Returns processing size and estimated cost
+
+## Security Features
+- Only SELECT queries are allowed (read-only access)
+- Default limit of 500GB for query processing to prevent excessive costs
+- Partition filter recommendations for partitioned tables
+- Secure handling of authentication credentials
+
+## Installation
+
+### Local Installation
 
 ```bash
-bun create github.com/dotneet/bun-mcp-server new_project_name
-cd new_project_name
-```
+# Clone the repository
+git clone https://github.com/yourusername/bigquery-mcp-server.git
+cd bigquery-mcp-server
 
-Implement MCP server using [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) or other tools you like.
+# Install dependencies
+bun install
 
-```bash
-# Edit spec.txt to describe what you want
-vim spec.txt
-claude "See spec.txt and implement an MCP Server that meets the spec."
-```
-
-Build a server
-
-```bash
+# Build the server
 bun run build
 ```
 
-Testing and Debugging
+### Docker Installation
+
+You can also run the server in a Docker container:
 
 ```bash
-# You can use [inspector](https://github.com/modelcontextprotocol/inspector) for testing and debugging.
-package_name=$(bun run show-package-name)
-npx @modelcontextprotocol/inspector dist/$package_name
+# Build the Docker image
+docker build -t bigquery-mcp-server .
+
+# Run the container
+docker run -it --rm \
+  bigquery-mcp-server \
+  --project-id=your-project-id
 ```
 
-Install
+Or using Docker Compose:
 
 ```bash
-# Install command to $HOME/bin or your own path.
-cp dist/$package_name $HOME/bin/
+# Edit docker-compose.yml to set your project ID and other options
+# Then run:
+docker-compose up
 ```
+
+## MCP Configuration
+
+To use this server with an MCP-enabled LLM, add it to your MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "bigquery": {
+      "command": "/path/to/dist/bigquery-mcp-server",
+      "args": ["--project-id=your-project-id"],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json"
+      }
+    }
+  }
+}
+```
+
+You can also use Application Default Credentials instead of a service account key file:
+
+```json
+{
+  "mcpServers": {
+    "bigquery": {
+      "command": "/path/to/dist/bigquery-mcp-server",
+      "args": ["--project-id=your-project-id"]
+    }
+  }
+}
+```
+
+### Setting up Application Default Credentials
+
+To authenticate using Application Default Credentials:
+
+1. Install the Google Cloud SDK if you haven't already:
+   ```bash
+   # For macOS
+   brew install --cask google-cloud-sdk
+   
+   # For other platforms, see: https://cloud.google.com/sdk/docs/install
+   ```
+
+2. Run the authentication command:
+   ```bash
+   gcloud auth application-default login
+   ```
+
+3. Follow the prompts to log in with your Google account that has access to the BigQuery project.
+
+4. The credentials will be saved to your local machine and automatically used by the BigQuery MCP server.
+
+## Testing
+
+A basic test script is included to verify that the server starts and responds to requests:
+
+```bash
+# Run the test script
+bun test
+
+# Or directly
+cd test
+./test-server.js
+```
+
+Note: The test script doesn't actually connect to BigQuery. It's meant to verify that the server starts and responds to requests.
+
+## Usage
+
+### Using the Helper Script
+
+The included `run-server.sh` script makes it easy to start the server with common configurations:
+
+```bash
+# Make the script executable
+chmod +x run-server.sh
+
+# Run with Application Default Credentials
+./run-server.sh --project-id=your-project-id
+
+# Run with a service account key file
+./run-server.sh \
+  --project-id=your-project-id \
+  --location=asia-northeast1 \
+  --key-file=/path/to/service-account-key.json \
+  --max-results=1000 \
+  --max-bytes-billed=500000000000
+```
+
+### Manual Execution
+
+You can also run the compiled binary directly:
+
+```bash
+# Run with Application Default Credentials
+./dist/bigquery-mcp-server --project-id=your-project-id
+
+# Run with a service account key file
+./dist/bigquery-mcp-server \
+  --project-id=your-project-id \
+  --location=asia-northeast1 \
+  --key-file=/path/to/service-account-key.json \
+  --max-results=1000 \
+  --max-bytes-billed=500000000000
+```
+
+### Example Client
+
+An example Node.js client is included in the `examples` directory:
+
+```bash
+# Make the example executable
+chmod +x examples/sample-query.js
+
+# Edit the example to set your project ID
+# Then run it
+cd examples
+./sample-query.js
+```
+
+### Command Line Options
+
+- `--project-id`: Google Cloud project ID (required)
+- `--location`: BigQuery location (default: asia-northeast1)
+- `--key-file`: Path to service account key file (optional)
+- `--max-results`: Maximum rows to return (default: 1000)
+- `--max-bytes-billed`: Maximum bytes to process (default: 500000000000, 500GB)
+
+## Required Permissions
+
+The service account or user credentials should have one of the following:
+
+- `roles/bigquery.user` (recommended)
+
+Or both of these:
+- `roles/bigquery.dataViewer` (for reading table data)
+- `roles/bigquery.jobUser` (for executing queries)
+
+## Example Usage
+
+### Query Tool
+
+```json
+{
+  "query": "SELECT * FROM `project.dataset.table` LIMIT 10",
+  "maxResults": 100,
+  "dryRun": false
+}
+```
+
+### Get Table Information Tool
+
+```json
+{
+  "datasetId": "your_dataset",
+  "tableId": "your_table",
+  "partition": "20250101"
+}
+```
+
+### Dry Run Query Tool
+
+```json
+{
+  "query": "SELECT * FROM `project.dataset.table` WHERE date = '2025-01-01'"
+}
+```
+
+## Error Handling
+
+The server provides detailed error messages for:
+- Authentication failures
+- Permission issues
+- Invalid queries
+- Missing partition filters
+- Excessive data processing requests
+
+## License
+
+MIT

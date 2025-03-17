@@ -1,79 +1,426 @@
-import {
-  McpServer,
-  ResourceTemplate,
-} from "@modelcontextprotocol/sdk/server/mcp.js";
+#!/usr/bin/env bun
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { BigQuery } from "@google-cloud/bigquery";
+import type { BigQueryOptions } from "@google-cloud/bigquery";
 import { z } from "zod";
 
-// Create an MCP server
-const server = new McpServer({
-  name: "ServerName",
-  version: "1.0.0",
+// Command line arguments schema
+const ArgsSchema = z.object({
+  "project-id": z.string().min(1, "Project ID is required"),
+  "location": z.string().default("asia-northeast1"),
+  "key-file": z.string().optional(),
+  "max-results": z.coerce.number().default(1000),
+  "max-bytes-billed": z.coerce.number().default(500000000000), // 500GB
 });
 
-// Example: Add a BMI calculator
-server.tool(
-  // tool name
-  "calculate_bmi",
-  // description
-  "Calculate BMI to see if you are overweight.",
-  // input schema
-  {
-    height: z.number().describe("Height in cm"),
-    weight: z.number().describe("Weight in kg"),
-  },
-  // tool implementation
-  async ({ height, weight }) => {
-    const heightInMeter = height / 100;
-    const bmi = weight / (heightInMeter * heightInMeter);
-    return {
-      content: [{ type: "text", text: String(bmi) }],
+type Args = z.infer<typeof ArgsSchema>;
+
+class BigQueryMcpServer {
+  private server: McpServer;
+  private bigquery: BigQuery;
+  private args: Args;
+
+  constructor(args: Args) {
+    this.args = args;
+    
+    // Initialize BigQuery client
+    const options: BigQueryOptions = {
+      projectId: args["project-id"],
+      location: args.location,
     };
-  },
-);
-
-// Example: Add a prompt
-server.prompt(
-  // prompt name
-  "greeting",
-  // description
-  "Greet the user with a friendly message.",
-  // input schema
-  { name: z.string().describe("The name of the user") },
-  // prompt implementation
-  ({ name }) => ({
-    messages: [
+    
+    // Use key file if provided, otherwise use Application Default Credentials
+    if (args["key-file"]) {
+      options.keyFilename = args["key-file"];
+    }
+    
+    this.bigquery = new BigQuery(options);
+    
+    // Initialize MCP server
+    this.server = new McpServer({
+      name: "bigquery-mcp-server",
+      version: "1.0.0",
+    });
+    
+    // Register tools
+    this.registerTools();
+  }
+  
+  private registerTools() {
+    // 1. query - Execute a read-only BigQuery SQL query
+    this.server.tool(
+      "query",
+      "Execute a read-only BigQuery SQL query",
       {
-        role: "user",
-        content: {
-          type: "text",
-          text: `Hello, ${name}! How can I help you?`,
-        },
+        query: z.string().min(1, "SQL query is required"),
+        maxResults: z.number().optional().default(this.args["max-results"]),
+        dryRun: z.boolean().optional().default(false),
       },
-    ],
-  }),
-);
-
-// Example: Add a dynamic greeting resource
-server.resource(
-  "greeting",
-  new ResourceTemplate("greeting://{name}", { list: undefined }),
-  async (uri, { name }) => ({
-    contents: [
+      async ({ query, maxResults, dryRun }) => {
+        try {
+          // Ensure query is SELECT only
+          if (!this.isSelectQuery(query)) {
+            return {
+              content: [{ 
+                type: "text", 
+                text: "Error: Only SELECT queries are allowed for security reasons." 
+              }],
+              isError: true,
+            };
+          }
+          
+          const options = {
+            query,
+            dryRun,
+            maximumBytesBilled: String(this.args["max-bytes-billed"]),
+            maxResults,
+          };
+          
+          const [job] = await this.bigquery.createQueryJob(options);
+          
+          if (dryRun) {
+            const [metadata] = await job.getMetadata();
+            return {
+              content: [{ 
+                type: "text", 
+                text: JSON.stringify({
+                  totalBytesProcessed: metadata.statistics.totalBytesProcessed,
+                  estimatedCost: this.calculateEstimatedCost(Number(metadata.statistics.totalBytesProcessed)),
+                }, null, 2)
+              }],
+            };
+          }
+          
+          const [rows] = await job.getQueryResults({
+            maxResults,
+          });
+          
+          return {
+            content: [{ 
+              type: "text", 
+              text: JSON.stringify(rows, null, 2) 
+            }],
+          };
+        } catch (error) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: `Error executing query: ${(error as Error).message}` 
+            }],
+            isError: true,
+          };
+        }
+      }
+    );
+    
+    // 2. list_all_tables - List all datasets and tables in the project
+    this.server.tool(
+      "list_all_tables",
+      "List all datasets and tables in the project",
+      {},
+      async () => {
+        try {
+          const [datasets] = await this.bigquery.getDatasets();
+          
+          const result: Record<string, string[]> = {};
+          
+          for (const dataset of datasets) {
+            if (dataset.id) {
+              const [tables] = await dataset.getTables();
+              result[dataset.id] = tables.map(table => table.id || '');
+            }
+          }
+          
+          return {
+            content: [{ 
+              type: "text", 
+              text: JSON.stringify(result, null, 2) 
+            }],
+          };
+        } catch (error) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: `Error listing tables: ${(error as Error).message}` 
+            }],
+            isError: true,
+          };
+        }
+      }
+    );
+    
+    // 3. get_table_information - Get table schema and sample data
+    this.server.tool(
+      "get_table_information",
+      "Get table schema and sample data (up to 20 rows)",
       {
-        uri: uri.href,
-        text: `Hello, ${name}!`,
+        datasetId: z.string().min(1, "Dataset ID is required"),
+        tableId: z.string().min(1, "Table ID is required"),
+        partition: z.string().optional().describe("Partition filter (e.g., '20250101' or '2025-01-01')"),
       },
-    ],
-  }),
-);
-
-async function main() {
-  // Start receiving messages on stdin and sending messages on stdout
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+      async ({ datasetId, tableId, partition }) => {
+        try {
+          const table = this.bigquery.dataset(datasetId).table(tableId);
+          
+          // Get table metadata
+          const [metadata] = await table.getMetadata();
+          const schema = metadata.schema;
+          const timePartitioning = metadata.timePartitioning;
+          
+          // Check if table is partitioned
+          const isPartitioned = !!timePartitioning;
+          const partitionColumn = isPartitioned ? 
+            (timePartitioning.field || "_PARTITIONTIME") : null;
+          
+          // Prepare query to get sample data
+          let query = `SELECT * FROM \`${this.args["project-id"]}.${datasetId}.${tableId}\``;
+          
+          // Add partition filter if provided and table is partitioned
+          if (isPartitioned && partition) {
+            // Format partition filter based on the partition column
+            if (partitionColumn === "_PARTITIONTIME") {
+              // Format date if needed (YYYYMMDD -> YYYY-MM-DD)
+              const formattedDate = partition.length === 8 ? 
+                `${partition.substring(0, 4)}-${partition.substring(4, 6)}-${partition.substring(6, 8)}` : 
+                partition;
+              
+              query += ` WHERE _PARTITIONTIME = TIMESTAMP('${formattedDate}')`;
+            } else {
+              query += ` WHERE ${partitionColumn} = '${partition}'`;
+            }
+          } else if (isPartitioned && !partition) {
+            // Warn if table is partitioned but no partition filter provided
+            return {
+              content: [{ 
+                type: "text", 
+                text: `Warning: Table ${tableId} is partitioned by ${partitionColumn} but no partition filter was provided. ` +
+                      `This may result in a large query. Please provide a partition value.` 
+              }],
+              isError: true,
+            };
+          }
+          
+          query += " LIMIT 20";
+          
+          // Execute query to get sample data
+          const [rows] = await this.bigquery.query({
+            query,
+            maximumBytesBilled: String(this.args["max-bytes-billed"]),
+          });
+          
+          return {
+            content: [{ 
+              type: "text", 
+              text: JSON.stringify({
+                schema,
+                timePartitioning,
+                sampleData: rows,
+              }, null, 2) 
+            }],
+          };
+        } catch (error) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: `Error getting table information: ${(error as Error).message}` 
+            }],
+            isError: true,
+          };
+        }
+      }
+    );
+    
+    // 4. dry_run_query - Check query for errors and estimate cost
+    this.server.tool(
+      "dry_run_query",
+      "Check query for errors and estimate cost without executing it",
+      {
+        query: z.string().min(1, "SQL query is required"),
+      },
+      async ({ query }) => {
+        try {
+          // Ensure query is SELECT only
+          if (!this.isSelectQuery(query)) {
+            return {
+              content: [{ 
+                type: "text", 
+                text: "Error: Only SELECT queries are allowed for security reasons." 
+              }],
+              isError: true,
+            };
+          }
+          
+          const options = {
+            query,
+            dryRun: true,
+            maximumBytesBilled: String(this.args["max-bytes-billed"]),
+          };
+          
+          const [job] = await this.bigquery.createQueryJob(options);
+          const [metadata] = await job.getMetadata();
+          
+          const totalBytesProcessed = Number(metadata.statistics.totalBytesProcessed);
+          const estimatedCost = this.calculateEstimatedCost(totalBytesProcessed);
+          
+          return {
+            content: [{ 
+              type: "text", 
+              text: JSON.stringify({
+                status: "Query is valid",
+                totalBytesProcessed,
+                totalBytesProcessedGb: (totalBytesProcessed / 1024 / 1024 / 1024).toFixed(2) + " GB",
+                estimatedCost: `$${estimatedCost.toFixed(2)}`,
+                queryPlan: metadata.statistics.queryPlan,
+              }, null, 2) 
+            }],
+          };
+        } catch (error) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: `Error in query: ${(error as Error).message}` 
+            }],
+            isError: true,
+          };
+        }
+      }
+    );
+  }
+  
+  // Helper method to check if a query is SELECT only
+  private isSelectQuery(query: string): boolean {
+    const normalizedQuery = query.trim().toLowerCase();
+    
+    // Check if query starts with SELECT
+    if (!normalizedQuery.startsWith("select")) {
+      return false;
+    }
+    
+    // Check for disallowed statements
+    const disallowedStatements = [
+      "insert", "update", "delete", "create", "drop", "alter", 
+      "truncate", "merge", "grant", "revoke"
+    ];
+    
+    for (const statement of disallowedStatements) {
+      // Use regex to check for whole word matches
+      const regex = new RegExp(`\\b${statement}\\b`, "i");
+      if (regex.test(normalizedQuery)) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+  
+  // Helper method to calculate estimated cost (simplified)
+  private calculateEstimatedCost(bytes: number): number {
+    // BigQuery pricing: $5 per TB (as of 2025)
+    // This is a simplified calculation and may not reflect actual billing
+    return (bytes / 1024 / 1024 / 1024 / 1024) * 5;
+  }
+  
+  // Verify authentication and permissions
+  async verifyAuthentication(): Promise<boolean> {
+    try {
+      // Try to list datasets as a simple permission check
+      await this.bigquery.getDatasets({ maxResults: 1 });
+      return true;
+    } catch (error) {
+      console.error("Authentication error:", (error as Error).message);
+      return false;
+    }
+  }
+  
+  // Start the server
+  async start() {
+    // Verify authentication before starting
+    const isAuthenticated = await this.verifyAuthentication();
+    if (!isAuthenticated) {
+      console.error("Failed to authenticate with BigQuery. Please check your credentials and permissions.");
+      process.exit(1);
+    }
+    
+    console.error(`BigQuery MCP Server starting...`);
+    console.error(`Project ID: ${this.args["project-id"]}`);
+    console.error(`Location: ${this.args.location}`);
+    console.error(`Max Results: ${this.args["max-results"]}`);
+    console.error(`Max Bytes Billed: ${this.args["max-bytes-billed"]} (${this.args["max-bytes-billed"] / 1024 / 1024 / 1024} GB)`);
+    
+    const transport = new StdioServerTransport();
+    await this.server.connect(transport);
+    
+    console.error("BigQuery MCP Server running on stdio");
+    
+    // Handle termination
+    process.on("SIGINT", async () => {
+      console.error("Shutting down BigQuery MCP Server...");
+      await this.server.close();
+      process.exit(0);
+    });
+  }
 }
 
+// Parse command line arguments
+function parseArgs(): Args {
+  const args: Record<string, string> = {};
+  
+  for (let i = 0; i < process.argv.length; i++) {
+    const arg = process.argv[i];
+    if (arg.startsWith("--")) {
+      // Handle --key=value format
+      if (arg.includes("=")) {
+        const [key, value] = arg.substring(2).split("=", 2);
+        args[key] = value;
+      } 
+      // Handle --key value format
+      else {
+        const key = arg.substring(2);
+        const value = process.argv[i + 1];
+        if (value && !value.startsWith("--")) {
+          args[key] = value;
+          i++; // Skip the value in the next iteration
+        } else {
+          args[key] = "true"; // Flag without value
+        }
+      }
+    }
+  }
+  
+  try {
+    return ArgsSchema.parse(args);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.error("Invalid arguments:", error.errors);
+    } else {
+      console.error("Error parsing arguments:", (error as Error).message);
+    }
+    
+    console.error("\nUsage:");
+    console.error("  bun run index.ts --project-id=<project-id> [options]");
+    console.error("\nOptions:");
+    console.error("  --project-id         Google Cloud project ID (required)");
+    console.error("  --location           BigQuery location (default: asia-northeast1)");
+    console.error("  --key-file           Path to service account key file (optional)");
+    console.error("  --max-results        Maximum rows to return (default: 1000)");
+    console.error("  --max-bytes-billed   Maximum bytes to process (default: 500000000000, 500GB)");
+    
+    process.exit(1);
+  }
+}
+
+// Main function
+async function main() {
+  const args = parseArgs();
+  const server = new BigQueryMcpServer(args);
+  await server.start();
+}
+
+// Run main function if this is the main module
 if (import.meta.main) {
-  main();
+  main().catch(error => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
 }

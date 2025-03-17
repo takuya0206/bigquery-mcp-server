@@ -1,4 +1,40 @@
-# dependencies (bun install)
+# dependencies (bun install)# Dependency directories
+node_modules/
+.npm/
+
+# Build output
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Service account keys
+*.json
+!package.json
+!tsconfig.json
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS specific
+.DS_Store
+Thumbs.db
 node_modules
 
 # output

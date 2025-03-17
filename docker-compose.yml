@@ -1,0 +1,23 @@
+version: '3'
+
+services:
+  bigquery-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bigquery-mcp-server
+    environment:
+      # Set your environment variables here
+      # - GOOGLE_APPLICATION_CREDENTIALS=/app/key.json
+    volumes:
+      # Mount your service account key file if needed
+      # - ./path/to/your/key.json:/app/key.json:ro
+    command:
+      # Replace with your actual project ID
+      - --project-id=your-project-id
+      - --location=asia-northeast1
+      - --max-results=1000
+      - --max-bytes-billed=500000000000
+    # Use stdin_open and tty for interactive mode
+    stdin_open: true
+    tty: true

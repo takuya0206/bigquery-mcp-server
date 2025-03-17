@@ -1,0 +1,172 @@
+# BigQuery MCP サーバー仕様
+## 概要
+このファイルは、Model Context Protocol (MCP) を使用して Google BigQuery にアクセスするためのサーバーを実装しています。このサーバーは、LLM（大規模言語モデル）がBigQueryのデータセット構造やデータを理解し、SQL クエリを実行できるようにするためのツールとリソースを提供します。
+
+## 主な機能
+
+1. **認証と接続管理**：
+- Application Default Credentials (ADC) または サービスアカウントキーファイルによる認証
+- プロジェクトID、ロケーション設定の管理
+- 起動時の認証情報検証機能
+
+
+2. **ツール（Tools）**：
+- query: 読み取り専用のBigQuery SQLクエリを実行
+- list_all_tables: プロジェクト内のすべてのデータセット一覧を取得し、さらにその配下にあるテーブル名もすべて一覧で取得する
+- get_table_information: 特定のテーブルのスキーマ情報ならびにサンプルデータ（最大20行）を取得
+- dry_run_query: クエリの実行計画と潜在的なエラーを確認（実際には実行しない）
+
+
+## 特記事項
+- セキュリティ上、SELECT クエリのみ許可（読み取り専用アクセス）
+- 大量のデータ処理を防ぐため、クエリ処理量は500GBにデフォルト制限
+- テーブルにはパーティションフィルタが必須のものがある。`query` や `get_table_information` ではパーティションの指定を考慮したクエリを発行できるようにする
+- テーブルのスキーマだけでなくサンプルデータ（20行）も提供
+データ返却時のサイズ制限を実装し、LLMのコンテキスト制限を考慮
+
+## パラメータ
+
+--project-id: Google Cloudプロジェクト ID（必須）
+--location: BigQueryロケーション（デフォルト: asia-northeast1）
+--key-file: サービスアカウントキーファイルのパス（オプション）
+--max-results: 1回のクエリで返却される最大行数（デフォルト: 1000）
+--max-bytes-billed: 1回のクエリで処理される最大バイト数（デフォルト: 500000000000、500GB）
+
+## 必要な権限
+
+roles/bigquery.user (推奨)
+または以下の両方:
+
+roles/bigquery.dataViewer
+roles/bigquery.jobUser
+
+
+# BigQuery MCP サーバー仕様
+
+## 概要
+このファイルは、Model Context Protocol (MCP) を使用して Google BigQuery にアクセスするためのサーバーを実装しています。このサーバーは、LLM（大規模言語モデル）が BigQuery のデータセット構造やデータを理解し、SQL クエリを実行できるようにするためのツールとリソースを提供します。
+
+## 主な機能
+	1.	認証と接続管理
+	•	Application Default Credentials (ADC) またはサービスアカウントキーファイルによる認証
+	•	プロジェクトID、ロケーションなどの設定管理
+	•	起動時に認証情報の検証を実施（適切な権限があるか確認）
+
+	2.	ツール（Tools）
+    1.	query
+      •	読み取り専用 (SELECT) の BigQuery SQL クエリを実行
+      •	クエリ結果は --max-results（デフォルト 1000 行）まで取得
+      •	--max-bytes-billed（デフォルト 500GB）を超えるクエリは実行不可
+      •	パーティションテーブルの場合、パーティションフィルタを推奨
+    2.	list_all_tables
+      •	プロジェクト内のすべてのデータセット一覧を取得し、各データセット配下にあるテーブル一覧もすべて取得
+      •	データセット数およびテーブル数が多い場合にはページネーションを考慮
+    3.	get_table_information
+      •	特定のテーブルのスキーマ情報を取得
+      •	サンプルデータ（最大 20 行）を合わせて取得
+      •	パーティションテーブルの場合、サンプル取得時にはパーティション指定を考慮
+    4.	dry_run_query
+      •	クエリの潜在的なエラーを確認
+      •	`query` を使用する前にエラーを確認する
+
+## 特記事項
+	•	セキュリティ上、SELECT クエリのみ許可（書き込みやテーブル作成は不可）
+	•	大規模クエリによる不要なコスト発生を防ぐため、--max-bytes-billed デフォルト 500GB に制限
+	•	パーティション化されたテーブルを扱う場合、パーティションフィルタ（例: WHERE _PARTITIONDATE = '2025-01-01'）を適切に指定する必要がある
+	•	ツールの呼び出し時には認証やパラメータの妥当性検証を行い、エラーを返す
+
+## パラメータ
+	•	--project-id: Google Cloud プロジェクトID（必須）
+	•	--location: BigQuery ロケーション（デフォルト: asia-northeast1）
+	•	--key-file: サービスアカウントキーファイルのパス（オプション）
+	•	--max-results: 1 回のクエリで返却される最大行数（デフォルト: 1000）
+	•	--max-bytes-billed: 1 回のクエリで処理される最大バイト数（デフォルト: 500000000000, 500GB）
+
+## 必要な権限
+	•	推奨ロール: roles/bigquery.user
+または、以下を組み合わせて付与
+	•	roles/bigquery.dataViewer (テーブルデータの読み取り)
+	•	roles/bigquery.jobUser (クエリジョブの実行)
+
+認証には上記権限が必要となるため、サービスアカウントまたは使用者のユーザーアカウントに付与しておきます。
+
+
+## エラーハンドリング
+	•	認証エラー: キーファイルが不正、または ADC が利用不可の場合
+	•	権限エラー: 必要なロールが付与されていない場合
+	•	クエリエラー: SQL 文が不正、または --max-bytes-billed を超える場合
+	•	パーティションフィルタなしエラー: 必須パーティションテーブルなのにフィルタが指定されていない場合（必要に応じてアプリ側でガイド）
+	•	その他: データセットやテーブルが存在しない場合など
+
+状況に応じて、MCP のレスポンスとして適切なエラーメッセージおよびステータスコードを返却します。
+
+
+## セキュリティ
+	•	サービスアカウントキーファイル は安全に保管し、パスワードや秘密鍵をログに出力しない
+	•	SELECT のみ を許可し、データ破壊や変更のリスクを抑える
+	•	必要最小限のロール (Least Privilege) を付与
+
+
+## 実行方法
+	•	Bun ランタイム で実行
+	•	TypeScript + @modelcontextprotocol/sdk + Google BigQuery クライアントライブラリ (@google-cloud/bigquery など) を使用
+	•	StdioServerTransport を利用して標準入出力で通信
+	•	実行例:
+
+```
+bun run index.ts \
+  --project-id=my-awesome-project \
+  --location=asia-northeast1 \
+  --key-file=/path/to/service_account_key.json \
+  --max-results=1000 \
+  --max-bytes-billed=500000000000
+```
+
+# 生成プロンプト
+以下のプロンプトを使用して、この BigQuery MCP サーバーを生成できます。
+
+Google BigQuery にアクセスするための Model Context Protocol (MCP) サーバーを TypeScript で実装してください。このサーバーは、LLM が BigQuery のデータセット構造やデータを理解し、SQL クエリを実行できるようにするためのツールとリソースを提供します。
+
+## 技術要件
+
+- Bun ランタイムを使用
+- TypeScript で実装
+- @modelcontextprotocol/sdk を使用
+- @google-cloud/bigquery を使用して BigQuery と通信
+- zod を使用してパラメータのバリデーション
+
+## 機能要件
+
+### 認証と接続管理
+- ADC またはサービスアカウントキーファイルを使用
+- --project-id（必須）、--location（必須）などを受け取り、BigQuery に接続
+- 起動時に認証情報・権限をチェック
+
+### ツール（Tools）
+
+1. query
+   - SELECT クエリのみ実行
+   - --max-results で取得行数制限
+   - --max-bytes-billed で処理量制限
+
+2. list_all_tables
+   - プロジェクト内の全データセットおよびテーブル名を取得
+
+3. get_table_information
+   - テーブルスキーマとサンプルデータ（最大20行）を取得
+   - パーティションテーブルの場合はパーティションフィルタに対応
+
+4. dry_run_query
+   - クエリ発行前のエラーチェック
+
+### エラーハンドリング
+- 無効なクエリ、過大な処理量、権限不足、存在しないテーブル等に適切に対処
+
+### セキュリティ
+- SELECT のみ許可
+- --max-bytes-billed などでコスト暴走を防止
+- サービスアカウントキーファイルの安全な管理
+
+## 実行方法
+- Bun ランタイムで実行
+- StdioServerTransport を使用して標準入出力で通信

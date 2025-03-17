@@ -1,0 +1,45 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Node.js
+node_modules
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Build artifacts
+dist
+build
+
+# Environment variables
+.env
+.env.*
+
+# Editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+test
+
+# Documentation
+docs
+*.md
+
+# Service account keys
+*.json
+!package.json
+!tsconfig.json
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -5,7 +5,9 @@
   "private": true,
   "scripts": {
     "build": "mkdir -p dist && bun build --compile --outfile=dist/$npm_package_name index.ts",
-    "show-package-name": "echo $npm_package_name"
+    "show-package-name": "echo $npm_package_name",
+    "start": "./run-server.sh --project-id=${PROJECT_ID:-your-project-id}",
+    "test": "cd test && ./test-server.js"
   },
   "devDependencies": {
     "@types/bun": "latest"
@@ -14,6 +16,8 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.6.0"
+    "@google-cloud/bigquery": "^7.5.0",
+    "@modelcontextprotocol/sdk": "^1.6.0",
+    "zod": "^3.22.4"
   }
 }
