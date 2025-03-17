@@ -69,6 +69,7 @@ async function testDryRunQuery(client) {
   try {
     const result = await client.callTool('dry_run_query', {
       query: TEST_QUERY,
+      dryRun: true,
     });
     
     console.log('Dry run result:');

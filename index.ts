@@ -80,14 +80,32 @@ class BigQueryMcpServer {
           const [job] = await this.bigquery.createQueryJob(options);
           
           if (dryRun) {
-            const [metadata] = await job.getMetadata();
+            // Access statistics directly from the job object for dry runs
+            const statistics = job.metadata && job.metadata.statistics;
+            
+            if (!statistics || !statistics.totalBytesProcessed) {
+              return {
+                content: [{ 
+                  type: "text", 
+                  text: "Error: Could not retrieve query statistics." 
+                }],
+                isError: true,
+              };
+            }
+            
+            const totalBytesProcessed = Number(statistics.totalBytesProcessed);
+            const estimatedCost = this.calculateEstimatedCost(totalBytesProcessed);
+            
             return {
               content: [{ 
                 type: "text", 
                 text: JSON.stringify({
-                  totalBytesProcessed: metadata.statistics.totalBytesProcessed,
-                  estimatedCost: this.calculateEstimatedCost(Number(metadata.statistics.totalBytesProcessed)),
-                }, null, 2)
+                  status: "Query is valid",
+                  totalBytesProcessed,
+                  totalBytesProcessedGb: (totalBytesProcessed / 1024 / 1024 / 1024).toFixed(2) + " GB",
+                  estimatedCost: `$${estimatedCost.toFixed(2)}`,
+                  queryPlan: statistics.queryPlan,
+                }, null, 2) 
               }],
             };
           }
@@ -237,8 +255,9 @@ class BigQueryMcpServer {
       "Check query for errors and estimate cost without executing it",
       {
         query: z.string().min(1, "SQL query is required"),
+        dryRun: z.boolean().optional().default(true),
       },
-      async ({ query }) => {
+      async ({ query, dryRun }) => {
         try {
           // Ensure query is SELECT only
           if (!this.isSelectQuery(query)) {
@@ -251,16 +270,30 @@ class BigQueryMcpServer {
             };
           }
           
+          // Always force dryRun to true for this tool
           const options = {
             query,
-            dryRun: true,
+            dryRun: true, // Force to true regardless of input
             maximumBytesBilled: String(this.args["max-bytes-billed"]),
           };
           
+          // For dry run, the statistics are available directly from the job creation response
           const [job] = await this.bigquery.createQueryJob(options);
-          const [metadata] = await job.getMetadata();
           
-          const totalBytesProcessed = Number(metadata.statistics.totalBytesProcessed);
+          // Access statistics directly from the job object
+          const statistics = job.metadata && job.metadata.statistics;
+          
+          if (!statistics || !statistics.totalBytesProcessed) {
+            return {
+              content: [{ 
+                type: "text", 
+                text: "Error: Could not retrieve query statistics." 
+              }],
+              isError: true,
+            };
+          }
+          
+          const totalBytesProcessed = Number(statistics.totalBytesProcessed);
           const estimatedCost = this.calculateEstimatedCost(totalBytesProcessed);
           
           return {
@@ -271,7 +304,7 @@ class BigQueryMcpServer {
                 totalBytesProcessed,
                 totalBytesProcessedGb: (totalBytesProcessed / 1024 / 1024 / 1024).toFixed(2) + " GB",
                 estimatedCost: `$${estimatedCost.toFixed(2)}`,
-                queryPlan: metadata.statistics.queryPlan,
+                queryPlan: statistics.queryPlan,
               }, null, 2) 
             }],
           };

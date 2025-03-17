@@ -49,6 +49,9 @@ bun install
 
 # Build the server
 bun run build
+
+# Install command to your own path.
+cp dist/bigquery-mcp-server /path/to/your_place
 ```
 
 ### Docker Installation
