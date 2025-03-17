@@ -59,12 +59,12 @@ class BigQueryMcpServer {
       },
       async ({ query, maxResults, dryRun }) => {
         try {
-          // Ensure query is SELECT only
-          if (!this.isSelectQuery(query)) {
+          // Ensure query is not empty
+          if (!this.isValidQuery(query)) {
             return {
               content: [{ 
                 type: "text", 
-                text: "Error: Only SELECT queries are allowed for security reasons." 
+                text: "Error: Empty query is not allowed." 
               }],
               isError: true,
             };
@@ -259,12 +259,12 @@ class BigQueryMcpServer {
       },
       async ({ query, dryRun }) => {
         try {
-          // Ensure query is SELECT only
-          if (!this.isSelectQuery(query)) {
+          // Ensure query is not empty
+          if (!this.isValidQuery(query)) {
             return {
               content: [{ 
                 type: "text", 
-                text: "Error: Only SELECT queries are allowed for security reasons." 
+                text: "Error: Empty query is not allowed." 
               }],
               isError: true,
             };
@@ -321,30 +321,12 @@ class BigQueryMcpServer {
     );
   }
   
-  // Helper method to check if a query is SELECT only
-  private isSelectQuery(query: string): boolean {
-    const normalizedQuery = query.trim().toLowerCase();
+  // Helper method to check if a query is valid (not empty)
+  private isValidQuery(query: string): boolean {
+    const normalizedQuery = query.trim();
     
-    // Check if query starts with SELECT
-    if (!normalizedQuery.startsWith("select")) {
-      return false;
-    }
-    
-    // Check for disallowed statements
-    const disallowedStatements = [
-      "insert", "update", "delete", "create", "drop", "alter", 
-      "truncate", "merge", "grant", "revoke"
-    ];
-    
-    for (const statement of disallowedStatements) {
-      // Use regex to check for whole word matches
-      const regex = new RegExp(`\\b${statement}\\b`, "i");
-      if (regex.test(normalizedQuery)) {
-        return false;
-      }
-    }
-    
-    return true;
+    // Check if query is not empty
+    return normalizedQuery.length > 0;
   }
   
   // Helper method to calculate estimated cost (simplified)
