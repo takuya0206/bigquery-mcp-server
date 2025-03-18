@@ -16,16 +16,21 @@ A Model Context Protocol (MCP) server for accessing Google BigQuery. This server
    - Configurable maximum results and bytes billed
    - Security checks to prevent non-SELECT queries
 
-2. **list_all_tables**
-   - List all datasets and tables in the project
-   - Returns a structured JSON object with dataset and table names
+2. **list_all_datasets**
+   - List all datasets in the project
+   - Returns an array of dataset IDs
 
-3. **get_table_information**
+3. **list_all_tables_with_dataset**
+   - List all tables in a specific dataset with their schemas
+   - Requires a datasetId parameter
+   - Returns table IDs, schemas, time partitioning information, and descriptions
+
+4. **get_table_information**
    - Get table schema and sample data (up to 20 rows)
    - Support for partitioned tables with partition filters
    - Warnings for queries on partitioned tables without filters
 
-4. **dry_run_query**
+5. **dry_run_query**
    - Check query validity and estimate cost without execution
    - Returns processing size and estimated cost
 
@@ -236,6 +241,20 @@ Or both of these:
 }
 ```
 
+### List All Datasets Tool
+
+```json
+// No parameters required
+```
+
+### List All Tables With Dataset Tool
+
+```json
+{
+  "datasetId": "your_dataset"
+}
+```
+
 ### Get Table Information Tool
 
 ```json
@@ -274,7 +293,8 @@ src/
 ├── types.ts              # Type definitions
 ├── tools/                # Tool implementations
 │   ├── query.ts          # query tool
-│   ├── list-tables.ts    # list_all_tables tool
+│   ├── list-datasets.ts  # list_all_datasets tool
+│   ├── list-tables.ts    # list_all_tables_with_dataset tool
 │   ├── table-info.ts     # get_table_information tool
 │   └── dry-run.ts        # dry_run_query tool
 └── utils/                # Utility functions
