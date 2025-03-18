@@ -1,10 +1,10 @@
 {
   "name": "bigquery-mcp-server",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "mkdir -p dist && bun build --compile --outfile=dist/$npm_package_name index.ts",
+    "build": "mkdir -p dist && bun build --compile --outfile=dist/$npm_package_name src/index.ts",
     "show-package-name": "echo $npm_package_name",
     "start": "./run-server.sh --project-id=${PROJECT_ID:-your-project-id}",
     "test": "cd test && ./test-server.js"

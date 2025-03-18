@@ -91,4 +91,11 @@ echo ""
 echo "Executing: $CMD"
 echo "Press Ctrl+C to stop the server"
 echo ""
+
+# Check if the dist directory exists
+if [ ! -d "dist" ]; then
+  echo "Building the server first..."
+  bun run build
+fi
+
 exec $CMD

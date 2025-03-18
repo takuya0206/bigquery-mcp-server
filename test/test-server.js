@@ -11,8 +11,8 @@
  */
 
 import { spawn } from 'child_process';
-import { McpClient } from '@modelcontextprotocol/sdk/client/mcp.js';
-import { PipeClientTransport } from '@modelcontextprotocol/sdk/client/pipe.js';
+import { McpClient } from '@modelcontextprotocol/sdk/dist/client/mcp.js';
+import { PipeClientTransport } from '@modelcontextprotocol/sdk/dist/client/pipe.js';
 
 // Mock project ID for testing
 const TEST_PROJECT_ID = 'test-project-id';

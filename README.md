@@ -232,8 +232,7 @@ Or both of these:
 ```json
 {
   "query": "SELECT * FROM `project.dataset.table` LIMIT 10",
-  "maxResults": 100,
-  "dryRun": false
+  "maxResults": 100
 }
 ```
 
@@ -263,6 +262,25 @@ The server provides detailed error messages for:
 - Invalid queries
 - Missing partition filters
 - Excessive data processing requests
+
+## Code Structure
+
+The server is organized into the following structure:
+
+```
+src/
+├── index.ts              # Entry point
+├── server.ts             # BigQueryMcpServer class
+├── types.ts              # Type definitions
+├── tools/                # Tool implementations
+│   ├── query.ts          # query tool
+│   ├── list-tables.ts    # list_all_tables tool
+│   ├── table-info.ts     # get_table_information tool
+│   └── dry-run.ts        # dry_run_query tool
+└── utils/                # Utility functions
+    ├── args-parser.ts    # Command line argument parser
+    └── query-utils.ts    # Query validation and response formatting
+```
 
 ## License
 
