@@ -4,7 +4,8 @@ import { BigQuery } from "@google-cloud/bigquery";
 import type { BigQueryOptions } from "@google-cloud/bigquery";
 import type { Args } from "./types.js";
 import { createQueryTool, QueryToolSchema } from "./tools/query.js";
-import { createListAllTablesTool } from "./tools/list-tables.js";
+import { createListTablesWithDatasetTool, ListTablesWithDatasetSchema } from "./tools/list-tables.js";
+import { createListAllDatasetsTool } from "./tools/list-datasets.js";
 import { createTableInfoTool, TableInfoToolSchema } from "./tools/table-info.js";
 import { createDryRunTool, DryRunToolSchema } from "./tools/dry-run.js";
 
@@ -59,15 +60,23 @@ export class BigQueryMcpServer {
       createQueryTool(this.bigquery, this.args)
     );
     
-    // 2. list_all_tables - List all datasets and tables in the project
+    // 2. list_all_datasets - List all datasets in the project
     this.server.tool(
-      "list_all_tables",
-      "List all datasets and tables in the project",
+      "list_all_datasets",
+      "List all datasets in the project",
       {},
-      createListAllTablesTool(this.bigquery)
+      createListAllDatasetsTool(this.bigquery)
     );
     
-    // 3. get_table_information - Get table schema and sample data
+    // 3. list_all_tables_with_dataset - List all tables in a specific dataset with their schemas
+    this.server.tool(
+      "list_all_tables_with_dataset",
+      "List all tables in a specific dataset with their schemas",
+      ListTablesWithDatasetSchema,
+      createListTablesWithDatasetTool(this.bigquery)
+    );
+    
+    // 4. get_table_information - Get table schema and sample data
     this.server.tool(
       "get_table_information",
       "Get table schema and sample data (up to 20 rows)",
@@ -75,7 +84,7 @@ export class BigQueryMcpServer {
       createTableInfoTool(this.bigquery, this.args)
     );
     
-    // 4. dry_run_query - Check query for errors and estimate cost
+    // 5. dry_run_query - Check query for errors and estimate cost
     this.server.tool(
       "dry_run_query",
       "Check query for errors and estimate cost without executing it",
