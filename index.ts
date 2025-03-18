@@ -55,9 +55,8 @@ class BigQueryMcpServer {
       {
         query: z.string().min(1, "SQL query is required"),
         maxResults: z.number().optional().default(this.args["max-results"]),
-        dryRun: z.boolean().optional().default(false),
       },
-      async ({ query, maxResults, dryRun }) => {
+      async ({ query, maxResults }) => {
         try {
           // Ensure query is not empty
           if (!this.isValidQuery(query)) {
@@ -72,48 +71,15 @@ class BigQueryMcpServer {
           
           const options = {
             query,
-            dryRun,
             maximumBytesBilled: String(this.args["max-bytes-billed"]),
             maxResults,
           };
-          
+
           const [job] = await this.bigquery.createQueryJob(options);
-          
-          if (dryRun) {
-            // Access statistics directly from the job object for dry runs
-            const statistics = job.metadata && job.metadata.statistics;
-            
-            if (!statistics || !statistics.totalBytesProcessed) {
-              return {
-                content: [{ 
-                  type: "text", 
-                  text: "Error: Could not retrieve query statistics." 
-                }],
-                isError: true,
-              };
-            }
-            
-            const totalBytesProcessed = Number(statistics.totalBytesProcessed);
-            const estimatedCost = this.calculateEstimatedCost(totalBytesProcessed);
-            
-            return {
-              content: [{ 
-                type: "text", 
-                text: JSON.stringify({
-                  status: "Query is valid",
-                  totalBytesProcessed,
-                  totalBytesProcessedGb: (totalBytesProcessed / 1024 / 1024 / 1024).toFixed(2) + " GB",
-                  estimatedCost: `$${estimatedCost.toFixed(2)}`,
-                  queryPlan: statistics.queryPlan,
-                }, null, 2) 
-              }],
-            };
-          }
-          
           const [rows] = await job.getQueryResults({
             maxResults,
           });
-          
+
           return {
             content: [{ 
               type: "text", 
