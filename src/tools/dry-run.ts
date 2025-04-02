@@ -20,9 +20,13 @@ export function createDryRunTool(bigquery: BigQuery, args: Args) {
     const { query } = params;
     
     try {
-      // Ensure query is not empty
-      if (!isValidQuery(query)) {
-        return formatErrorResponse("Empty query is not allowed.");
+      // Ensure query is not empty and read-only
+      try {
+        if (!isValidQuery(query)) {
+          return formatErrorResponse("Empty query is not allowed.");
+        }
+      } catch (error) {
+        return formatErrorResponse((error as Error).message);
       }
       
       // Always force dryRun to true for this tool

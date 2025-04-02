@@ -3,15 +3,26 @@
  */
 
 /**
- * Check if a query is valid (not empty)
+ * Check if a query is valid (not empty and read-only)
  * @param query SQL query string
  * @returns boolean indicating if the query is valid
+ * @throws Error if the query contains non-read operations
  */
 export function isValidQuery(query: string): boolean {
   const normalizedQuery = query.trim();
   
   // Check if query is not empty
-  return normalizedQuery.length > 0;
+  if (normalizedQuery.length === 0) {
+    return false;
+  }
+  
+  // 読み取り専用クエリであることを検証
+  const forbiddenPattern = /\b(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|MERGE|TRUNCATE)\b/i;
+  if (forbiddenPattern.test(normalizedQuery)) {
+    throw new Error('読み取り操作のみが許可されています');
+  }
+  
+  return true;
 }
 
 /**

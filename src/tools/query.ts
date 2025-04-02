@@ -19,9 +19,13 @@ export function createQueryTool(bigquery: BigQuery, args: Args) {
   return async (params: { query: string; maxResults?: number }) => {
     const { query, maxResults = args["max-results"] } = params;
     try {
-      // Ensure query is not empty
-      if (!isValidQuery(query)) {
-        return formatErrorResponse("Empty query is not allowed.");
+      // Ensure query is not empty and read-only
+      try {
+        if (!isValidQuery(query)) {
+          return formatErrorResponse("Empty query is not allowed.");
+        }
+      } catch (error) {
+        return formatErrorResponse((error as Error).message);
       }
       
       const options = {
